@@ -1,0 +1,35 @@
+{
+  "name": "studio-3-ticketing-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import ./src/setup-dns.js --watch src/index.js",
+    "start": "node --import ./src/setup-dns.js src/index.js",
+    "db:generate": "node scripts/run-prisma.mjs generate",
+    "db:push": "node scripts/run-prisma.mjs db push",
+    "db:migrate": "node scripts/run-prisma.mjs migrate dev",
+    "db:studio": "node scripts/run-prisma.mjs studio",
+    "db:seed": "node --import ./src/setup-dns.js prisma/seed.js",
+    "postinstall": "prisma generate"
+  },
+  "prisma": {
+    "seed": "node prisma/seed.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
+    "bcrypt": "^6.0.0",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.2.1",
+    "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^7.0.10",
+    "pdfkit": "^0.17.2",
+    "qrcode": "^1.5.4",
+    "zod": "^4.1.13"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.0"
+  }
+}

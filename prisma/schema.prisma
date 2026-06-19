@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  user
+  admin
+}
+
+enum OrderStatus {
+  pending
+  paid
+  failed
+  refunded
+}
+
+enum TicketStatus {
+  valid
+  used
+  cancelled
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  phone        String?
+  role         UserRole  @default(user)
+  createdAt    DateTime  @default(now())
+  orders       Order[]
+  tickets      Ticket[]
+  scanLogs     ScanLog[] @relation("ScannedBy")
+}
+
+model Event {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  title      String
+  venue      String
+  address    String
+  startsAt   DateTime
+  endsAt     DateTime
+  priceCents Int
+  currency   String   @default("USD")
+  capacity   Int?
+  orders     Order[]
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  userId          String
+  user            User        @relation(fields: [userId], references: [id])
+  eventId         String
+  event           Event       @relation(fields: [eventId], references: [id])
+  quantity        Int
+  amountCents     Int
+  status          OrderStatus @default(pending)
+  finixTransferId String?     @unique
+  buyerEmail      String
+  buyerPhone      String?
+  createdAt       DateTime    @default(now())
+  tickets         Ticket[]
+}
+
+model Ticket {
+  id               String       @id @default(cuid())
+  orderId          String
+  order            Order        @relation(fields: [orderId], references: [id])
+  userId           String
+  user             User         @relation(fields: [userId], references: [id])
+  confirmationCode String
+  qrToken          String       @unique
+  status           TicketStatus @default(valid)
+  checkedInAt      DateTime?
+  checkedInById    String?
+  attendeeName     String
+  createdAt        DateTime     @default(now())
+  scanLogs         ScanLog[]
+}
+
+model ScanLog {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id])
+  adminId   String
+  admin     User     @relation("ScannedBy", fields: [adminId], references: [id])
+  result    String
+  createdAt DateTime @default(now())
+}
