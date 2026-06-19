@@ -167,6 +167,7 @@ export async function fulfillOrder(input) {
   }
 
   const pdfTickets = fulfillment.ticketRecords.map((t) => ({
+    eventSlug: event.slug,
     eventTitle: event.title,
     venue: event.venue,
     address: event.address,
@@ -175,6 +176,7 @@ export async function fulfillOrder(input) {
     confirmationCode: t.confirmationCode,
     qrToken: t.qrToken,
     ticketType: 'General Admission',
+    status: t.status,
   }));
 
   const combinedPdf = await generateTicketsPdf(pdfTickets);
@@ -207,6 +209,7 @@ export async function getTicketPdfForUser(ticketId, userId) {
   }
 
   return generateTicketPdf({
+    eventSlug: ticket.order.event.slug,
     eventTitle: ticket.order.event.title,
     venue: ticket.order.event.venue,
     address: ticket.order.event.address,
@@ -215,5 +218,6 @@ export async function getTicketPdfForUser(ticketId, userId) {
     confirmationCode: ticket.confirmationCode,
     qrToken: ticket.qrToken,
     ticketType: 'General Admission',
+    status: ticket.status,
   });
 }

@@ -1,6 +1,8 @@
 import { Router } from 'express';
+import QRCode from 'qrcode';
 import { requireAuth } from '../middleware/auth.js';
 import { prisma } from '../lib/prisma.js';
+import { env } from '../config/env.js';
 import { getTicketPdfForUser } from '../services/fulfillment.js';
 import { OrderStatus } from '@prisma/client';
 
@@ -24,6 +26,7 @@ router.get('/', requireAuth, async (req, res) => {
     tickets: tickets.map((t) => ({
       id: t.id,
       confirmationCode: t.confirmationCode,
+      qrToken: t.qrToken,
       status: t.status,
       attendeeName: t.attendeeName,
       checkedInAt: t.checkedInAt,
@@ -39,6 +42,30 @@ router.get('/', requireAuth, async (req, res) => {
       quantity: t.order.quantity,
     })),
   });
+});
+
+router.get('/:id/qr', requireAuth, async (req, res) => {
+  const ticketId = String(req.params.id);
+
+  const ticket = await prisma.ticket.findFirst({
+    where: {
+      id: ticketId,
+      userId: req.user.userId,
+      order: { status: OrderStatus.paid },
+    },
+  });
+
+  if (!ticket) {
+    res.status(404).json({ error: 'Ticket not found' });
+    return;
+  }
+
+  const verifyUrl = `${env.FRONTEND_URL}/admin/verify?t=${ticket.qrToken}`;
+  const png = await QRCode.toBuffer(verifyUrl, { width: 320, margin: 1 });
+
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.send(png);
 });
 
 router.get('/:id/pdf', requireAuth, async (req, res) => {

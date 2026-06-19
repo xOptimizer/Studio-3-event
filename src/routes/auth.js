@@ -3,6 +3,7 @@ import { z } from 'zod';
 import bcrypt from 'bcrypt';
 import { prisma } from '../lib/prisma.js';
 import { signToken, requireAuth } from '../middleware/auth.js';
+import { formatUserProfile, profileSelect } from '../lib/userProfile.js';
 
 const router = Router();
 
@@ -20,6 +21,7 @@ router.post('/login', async (req, res) => {
 
   const user = await prisma.user.findUnique({
     where: { email: parsed.data.email.toLowerCase() },
+    select: { ...profileSelect, passwordHash: true },
   });
 
   if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) {
@@ -31,19 +33,14 @@ router.post('/login', async (req, res) => {
 
   res.json({
     token,
-    user: {
-      id: user.id,
-      email: user.email,
-      name: user.name,
-      role: user.role,
-    },
+    user: formatUserProfile(user),
   });
 });
 
 router.get('/me', requireAuth, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
-    select: { id: true, email: true, name: true, role: true },
+    select: profileSelect,
   });
 
   if (!user) {
@@ -51,7 +48,7 @@ router.get('/me', requireAuth, async (req, res) => {
     return;
   }
 
-  res.json({ user });
+  res.json({ user: formatUserProfile(user) });
 });
 
 export default router;

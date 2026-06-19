@@ -4,10 +4,16 @@ import rateLimit from 'express-rate-limit';
 import { env } from './config/env.js';
 import { prisma } from './lib/prisma.js';
 import authRouter from './routes/auth.js';
+import passwordResetRouter from './routes/passwordReset.js';
+import profileRouter from './routes/profile.js';
 import checkoutRouter from './routes/checkout.js';
 import ticketsRouter from './routes/tickets.js';
 import adminRouter from './routes/admin.js';
 import finixWebhookRouter from './routes/webhooks/finix.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
@@ -30,6 +36,8 @@ app.use('/webhooks/finix', express.raw({ type: 'application/json' }), (req, res,
 
 app.use(express.json());
 
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 30,
@@ -42,6 +50,8 @@ app.get('/health', (_req, res) => {
 });
 
 app.use('/auth', authLimiter, authRouter);
+app.use('/auth', authLimiter, passwordResetRouter);
+app.use('/profile', authLimiter, profileRouter);
 app.use('/checkout', checkoutRouter);
 app.use('/tickets', ticketsRouter);
 app.use('/admin', adminRouter);

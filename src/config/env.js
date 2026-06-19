@@ -16,6 +16,7 @@ const envSchema = z.object({
   SMTP_PASS: z.string().optional(),
   EMAIL_FROM: z.string().default('tickets@studio3.dallas'),
   EVENT_SLUG: z.string().default('inside-the-mind-2026'),
+  EVENT_POSTER_URL: z.string().url().optional(),
   PORT: z.coerce.number().default(3001),
 });
 

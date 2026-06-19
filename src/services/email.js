@@ -73,3 +73,32 @@ Studio 3
     ],
   });
 }
+
+export async function sendPasswordResetOtpEmail({ to, name, otp }) {
+  const transport = getTransporter();
+
+  const text = `
+Hi ${name},
+
+We received a request to reset your Studio 3 account password.
+
+Your verification code is: ${otp}
+
+This code expires in 10 minutes. If you did not request a password reset, you can ignore this email.
+
+Studio 3
+`;
+
+  if (!transport) {
+    console.warn('[email] SMTP not configured — skipping password reset OTP to', to);
+    console.info('[email] Password reset OTP:', otp);
+    return;
+  }
+
+  await transport.sendMail({
+    from: env.EMAIL_FROM,
+    to,
+    subject: 'Studio 3 — Password reset code',
+    text,
+  });
+}
