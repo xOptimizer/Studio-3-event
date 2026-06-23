@@ -5,6 +5,7 @@ export const profileSelect = {
   phone: true,
   profilePhotoUrl: true,
   role: true,
+  mustChangePassword: true,
   createdAt: true,
 };
 
@@ -18,6 +19,7 @@ export function formatUserProfile(user) {
     phone: user.phone,
     profilePhotoUrl: user.profilePhotoUrl,
     role: user.role,
+    mustChangePassword: user.mustChangePassword,
     createdAt: user.createdAt,
   };
 }

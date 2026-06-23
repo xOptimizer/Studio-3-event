@@ -21,11 +21,27 @@ export async function requireAuth(req, res, next) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    req.user = { userId: user.id, role: user.role };
+    req.user = {
+      userId: user.id,
+      role: user.role,
+      mustChangePassword: user.mustChangePassword,
+    };
     next();
   } catch {
     res.status(401).json({ error: 'Invalid token' });
   }
+}
+
+export function requirePasswordChanged(req, res, next) {
+  if (req.user?.mustChangePassword && req.user.role !== 'admin') {
+    res.status(403).json({
+      error: 'You must set a new password before continuing',
+      code: 'PASSWORD_CHANGE_REQUIRED',
+      mustChangePassword: true,
+    });
+    return;
+  }
+  next();
 }
 
 export function requireAdmin(req, res, next) {

@@ -12,6 +12,10 @@ const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+const setPasswordSchema = z.object({
+  newPassword: z.string().min(8, 'Password must be at least 8 characters'),
+});
+
 router.post('/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body);
   if (!parsed.success) {
@@ -34,6 +38,38 @@ router.post('/login', async (req, res) => {
   res.json({
     token,
     user: formatUserProfile(user),
+  });
+});
+
+router.post('/set-password', requireAuth, async (req, res) => {
+  const parsed = setPasswordSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid password', details: parsed.error.flatten() });
+    return;
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: req.user.userId } });
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  if (!user.mustChangePassword) {
+    res.status(400).json({ error: 'Password already set. Use profile change-password instead.' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { passwordHash, mustChangePassword: false },
+    select: profileSelect,
+  });
+
+  res.json({
+    success: true,
+    message: 'Password set successfully',
+    user: formatUserProfile(updated),
   });
 });
 

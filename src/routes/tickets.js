@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import QRCode from 'qrcode';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requirePasswordChanged } from '../middleware/auth.js';
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { getTicketPdfForUser } from '../services/fulfillment.js';
@@ -8,7 +8,7 @@ import { OrderStatus } from '@prisma/client';
 
 const router = Router();
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requirePasswordChanged, async (req, res) => {
   const tickets = await prisma.ticket.findMany({
     where: {
       userId: req.user.userId,
@@ -44,7 +44,7 @@ router.get('/', requireAuth, async (req, res) => {
   });
 });
 
-router.get('/:id/qr', requireAuth, async (req, res) => {
+router.get('/:id/qr', requireAuth, requirePasswordChanged, async (req, res) => {
   const ticketId = String(req.params.id);
 
   const ticket = await prisma.ticket.findFirst({
@@ -68,7 +68,7 @@ router.get('/:id/qr', requireAuth, async (req, res) => {
   res.send(png);
 });
 
-router.get('/:id/pdf', requireAuth, async (req, res) => {
+router.get('/:id/pdf', requireAuth, requirePasswordChanged, async (req, res) => {
   const ticketId = String(req.params.id);
   const pdf = await getTicketPdfForUser(ticketId, req.user.userId);
 

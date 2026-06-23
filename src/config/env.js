@@ -17,6 +17,7 @@ const envSchema = z.object({
   EMAIL_FROM: z.string().default('tickets@studio3.dallas'),
   EVENT_SLUG: z.string().default('inside-the-mind-2026'),
   EVENT_POSTER_URL: z.string().url().optional(),
+  FINIX_MERCHANT_DISPLAY_NAME: z.string().default('Studio 3'),
   PORT: z.coerce.number().default(3001),
 });
 

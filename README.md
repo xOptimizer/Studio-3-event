@@ -60,10 +60,12 @@ Content-Type: application/json
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | GET | `/health` | Public | Health check |
-| POST | `/checkout` | Public | Finix token + buyer info → charge |
+| GET | `/checkout/config` | Public | Checkout + wallet config for frontend |
+| POST | `/checkout` | Public | Finix token / wallet token + buyer info → charge |
+| POST | `/checkout/apple-pay-session` | Public | Apple Pay merchant validation (Finix proxy) |
 | POST | `/webhooks/finix` | Finix signature | Payment webhooks |
 
-**Checkout body**
+**Checkout body — card (legacy, still supported)**
 
 ```json
 {
@@ -76,11 +78,50 @@ Content-Type: application/json
 }
 ```
 
+**Checkout body — Apple Pay / Google Pay**
+
+```json
+{
+  "paymentMethod": "apple_pay",
+  "thirdPartyToken": "{\"token\":{...}}",
+  "walletName": "John Doe",
+  "address": {
+    "country": "US",
+    "postal_code": "75201",
+    "line1": "123 Main St",
+    "city": "Dallas",
+    "region": "TX"
+  },
+  "quantity": 1,
+  "name": "John Doe",
+  "email": "john@example.com",
+  "phone": "+15550000000"
+}
+```
+
+Use `"paymentMethod": "google_pay"` for Google Pay. For Apple Pay, `thirdPartyToken` must be `JSON.stringify({ token: event.payment.token })` from the Apple Pay session. For Google Pay, pass the token from `paymentMethodData.tokenizationData.token` as-is.
+
+**Apple Pay session (merchant validation)**
+
+```json
+{
+  "validationUrl": "https://apple-pay-gateway.apple.com/...",
+  "domain": "checkout.yoursite.com"
+}
+```
+
+Response: `{ "sessionDetails": "..." }` — parse with `JSON.parse()` and pass to `completeMerchantValidation()`.
+
+**Checkout config — `GET /checkout/config`**
+
+Returns `merchantIdentityId` (for Google Pay `gatewayMerchantId`), `merchantDisplayName`, `finixEnv`, and event pricing for wallet buttons.
+
 ### Auth
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
 | POST | `/auth/login` | Public | Login → JWT |
+| POST | `/auth/set-password` | JWT | Set password on first login (when `mustChangePassword` is true) |
 | GET | `/auth/me` | JWT | Current user (includes phone, profile photo) |
 | POST | `/auth/forgot-password` | Public | Send 6-digit OTP to email |
 | POST | `/auth/reset-password` | Public | Reset password with email + OTP + new password |
@@ -98,6 +139,20 @@ Content-Type: application/json
 ```
 
 OTP expires in 10 minutes. Requires SMTP in production; without SMTP, the code is logged to the API console in development.
+
+**First login (generated password)**
+
+Checkout creates new accounts with a random password emailed once. The login response user object includes `mustChangePassword: true`. The frontend should redirect to a set-password screen before other app routes.
+
+Until the password is changed, `/tickets` and `/profile` return `403` with `code: "PASSWORD_CHANGE_REQUIRED"`.
+
+**Set password body** (first login only)
+
+```json
+{ "newPassword": "mysecurepassword" }
+```
+
+After success, `mustChangePassword` is `false` and normal API access is allowed.
 
 ### Profile
 
@@ -279,7 +334,7 @@ VITE_FINIX_ENV=sandbox
 |-------|-------------|
 | `/profile` | Profile photo, phone edit, change password |
 | `/tickets` | My Tickets — ticket card UI, QR display, JPG + PDF download |
-| `/event/checkout` | Finix checkout flow |
+| `/event/checkout` | Finix checkout flow (card, Apple Pay, Google Pay) |
 
 Login modal includes forgot-password flow (OTP endpoints above).
 
@@ -292,3 +347,5 @@ Login modal includes forgot-password flow (OTP endpoints above).
 - Profile photo uploads use local disk (`uploads/`). For ephemeral hosts, use persistent storage or swap to object storage (S3, etc.)
 
 See `docs/ARCHITECTURE.md` for full system design.
+
+See **`docs/PRODUCTION_PAYMENTS.md`** for the production go-live checklist (Finix, webhooks, Apple Pay, Google Pay, SMTP, and testing).

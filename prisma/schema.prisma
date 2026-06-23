@@ -32,8 +32,9 @@ model User {
   name            String
   phone           String?
   profilePhotoUrl String?
-  role            UserRole          @default(user)
-  createdAt       DateTime          @default(now())
+  role                UserRole          @default(user)
+  mustChangePassword  Boolean           @default(false)
+  createdAt           DateTime          @default(now())
   orders          Order[]
   tickets         Ticket[]
   scanLogs        ScanLog[]         @relation("ScannedBy")

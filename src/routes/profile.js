@@ -6,7 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { prisma } from '../lib/prisma.js';
-import { requireAuth } from '../middleware/auth.js';
+import { requireAuth, requirePasswordChanged } from '../middleware/auth.js';
 import { formatUserProfile, profileSelect } from '../lib/userProfile.js';
 
 const router = Router();
@@ -53,7 +53,7 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(8, 'New password must be at least 8 characters'),
 });
 
-router.get('/', requireAuth, async (req, res) => {
+router.get('/', requireAuth, requirePasswordChanged, async (req, res) => {
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
     select: profileSelect,
@@ -67,7 +67,7 @@ router.get('/', requireAuth, async (req, res) => {
   res.json({ user: formatUserProfile(user) });
 });
 
-router.patch('/', requireAuth, async (req, res) => {
+router.patch('/', requireAuth, requirePasswordChanged, async (req, res) => {
   const parsed = updatePhoneSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid phone number', details: parsed.error.flatten() });
@@ -83,7 +83,7 @@ router.patch('/', requireAuth, async (req, res) => {
   res.json({ user: formatUserProfile(user) });
 });
 
-router.post('/photo', requireAuth, (req, res, next) => {
+router.post('/photo', requireAuth, requirePasswordChanged, (req, res, next) => {
   upload.single('photo')(req, res, (err) => {
     if (err instanceof multer.MulterError) {
       res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Image must be under 5MB' : err.message });
@@ -112,7 +112,7 @@ router.post('/photo', requireAuth, (req, res, next) => {
   res.json({ user: formatUserProfile(user) });
 });
 
-router.post('/change-password', requireAuth, async (req, res) => {
+router.post('/change-password', requireAuth, requirePasswordChanged, async (req, res) => {
   const parsed = changePasswordSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: 'Invalid password data', details: parsed.error.flatten() });
@@ -134,7 +134,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
   const passwordHash = await bcrypt.hash(parsed.data.newPassword, 12);
   await prisma.user.update({
     where: { id: user.id },
-    data: { passwordHash },
+    data: { passwordHash, mustChangePassword: false },
   });
 
   res.json({ success: true, message: 'Password updated successfully' });

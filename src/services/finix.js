@@ -57,6 +57,31 @@ export async function createPaymentInstrument(identityId, token, name) {
   });
 }
 
+export async function createWalletPaymentInstrument(identityId, { type, thirdPartyToken, name, address }) {
+  return finixRequest('/payment_instruments', {
+    method: 'POST',
+    body: {
+      identity: identityId,
+      type,
+      third_party_token: thirdPartyToken,
+      name: name || 'Ticket Buyer',
+      address,
+    },
+  });
+}
+
+export async function createApplePaySession({ displayName, domain, merchantIdentity, validationUrl }) {
+  return finixRequest('/apple_pay_sessions', {
+    method: 'POST',
+    body: {
+      display_name: displayName,
+      domain,
+      merchant_identity: merchantIdentity,
+      validation_url: validationUrl,
+    },
+  });
+}
+
 export async function createTransfer(paymentInstrumentId, amountCents, fraudSessionId, tags) {
   const body = {
     amount: amountCents,

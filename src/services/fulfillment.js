@@ -35,6 +35,7 @@ async function findOrCreateUser(input) {
           name: input.buyerName,
           phone: input.buyerPhone,
           passwordHash,
+          mustChangePassword: true,
           role: UserRole.user,
         },
       });
