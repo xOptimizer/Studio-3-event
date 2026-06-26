@@ -1,8 +1,11 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { TicketStatus } from '@prisma/client';
+import QRCode from 'qrcode';
+import { OrderStatus, TicketStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { env } from '../config/env.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
+import { resendOrderTickets } from '../services/fulfillment.js';
 
 const router = Router();
 
@@ -131,13 +134,62 @@ router.get('/orders', async (_req, res) => {
     include: {
       event: true,
       user: { select: { email: true, name: true } },
-      tickets: { select: { id: true, status: true, confirmationCode: true } },
+      tickets: {
+        select: {
+          id: true,
+          status: true,
+          confirmationCode: true,
+          attendeeName: true,
+          checkedInAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+      },
     },
     orderBy: { createdAt: 'desc' },
     take: 100,
   });
 
   res.json({ orders });
+});
+
+router.post('/orders/:orderId/resend', async (req, res) => {
+  const orderId = String(req.params.orderId);
+  const result = await resendOrderTickets(orderId);
+
+  if (!result.ok) {
+    res.status(result.status || 400).json({ error: result.error });
+    return;
+  }
+
+  res.json({
+    success: true,
+    message: `Ticket email resent to ${result.email}`,
+    email: result.email,
+    ticketCount: result.ticketCount,
+  });
+});
+
+router.get('/tickets/:id/qr', async (req, res) => {
+  const ticketId = String(req.params.id);
+
+  const ticket = await prisma.ticket.findFirst({
+    where: {
+      id: ticketId,
+      order: { status: OrderStatus.paid },
+    },
+  });
+
+  if (!ticket) {
+    res.status(404).json({ error: 'Ticket not found' });
+    return;
+  }
+
+  const verifyUrl = `${env.FRONTEND_URL}/admin/verify?t=${ticket.qrToken}`;
+  const png = await QRCode.toBuffer(verifyUrl, { width: 320, margin: 1 });
+
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Cache-Control', 'private, max-age=3600');
+  res.send(png);
 });
 
 export default router;

@@ -74,6 +74,43 @@ Studio 3
   });
 }
 
+export async function sendTicketResendEmail(params) {
+  const transport = getTransporter();
+
+  const text = `
+Hi ${params.name},
+
+Here are your ticket(s) again for ${params.eventTitle}.
+
+Your ticket(s) are attached as a PDF. Each ticket includes a QR code for entry at the door.
+
+View tickets anytime after logging in: ${env.FRONTEND_URL}
+
+See you there,
+Studio 3
+`;
+
+  if (!transport) {
+    console.warn('[email] SMTP not configured — skipping resend to', params.to);
+    console.info('[email] Preview body:', text);
+    return;
+  }
+
+  await transport.sendMail({
+    from: env.EMAIL_FROM,
+    to: params.to,
+    subject: `Your Studio 3 ticket — ${params.eventTitle}`,
+    text,
+    attachments: [
+      {
+        filename: params.pdfFilename,
+        content: params.pdfBuffer,
+        contentType: 'application/pdf',
+      },
+    ],
+  });
+}
+
 export async function sendPasswordResetOtpEmail({ to, name, otp }) {
   const transport = getTransporter();
 

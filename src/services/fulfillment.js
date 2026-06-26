@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { OrderStatus, TicketStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { generateTicketPdf, generateTicketsPdf } from './ticketPdf.js';
-import { sendFulfillmentEmail } from './email.js';
+import { sendFulfillmentEmail, sendTicketResendEmail } from './email.js';
 import { assertEventCapacity } from './capacity.js';
 
 function generatePassword() {
@@ -196,6 +196,58 @@ export async function fulfillOrder(input) {
     orderId: fulfillment.orderId,
     ticketIds: fulfillment.ticketIds,
     alreadyFulfilled: false,
+  };
+}
+
+export async function resendOrderTickets(orderId) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    include: {
+      event: true,
+      tickets: true,
+      user: { select: { name: true, email: true } },
+    },
+  });
+
+  if (!order) {
+    return { ok: false, status: 404, error: 'Order not found' };
+  }
+
+  if (order.status !== OrderStatus.paid) {
+    return { ok: false, status: 400, error: 'Tickets can only be resent for paid orders' };
+  }
+
+  if (!order.tickets.length) {
+    return { ok: false, status: 400, error: 'No tickets found for this order' };
+  }
+
+  const pdfTickets = order.tickets.map((t) => ({
+    eventSlug: order.event.slug,
+    eventTitle: order.event.title,
+    venue: order.event.venue,
+    address: order.event.address,
+    startsAt: order.event.startsAt,
+    attendeeName: t.attendeeName,
+    confirmationCode: t.confirmationCode,
+    qrToken: t.qrToken,
+    ticketType: 'General Admission',
+    status: t.status,
+  }));
+
+  const combinedPdf = await generateTicketsPdf(pdfTickets);
+
+  await sendTicketResendEmail({
+    to: order.buyerEmail,
+    name: order.user?.name || order.tickets[0]?.attendeeName || 'Guest',
+    eventTitle: order.event.title,
+    pdfBuffer: combinedPdf,
+    pdfFilename: `studio3-tickets-${order.id}.pdf`,
+  });
+
+  return {
+    ok: true,
+    email: order.buyerEmail,
+    ticketCount: order.tickets.length,
   };
 }
 
