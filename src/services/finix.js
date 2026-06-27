@@ -62,6 +62,7 @@ export async function createWalletPaymentInstrument(identityId, { type, thirdPar
     method: 'POST',
     body: {
       identity: identityId,
+      merchant_identity: env.FINIX_MERCHANT_IDENTITY_ID,
       type,
       third_party_token: thirdPartyToken,
       name: name || 'Ticket Buyer',
