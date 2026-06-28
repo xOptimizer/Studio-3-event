@@ -1,0 +1,53 @@
+# Render Blueprint — Studio 3 Ticketing API
+#
+# Deploy: Dashboard → New → Blueprint → connect this repo.
+# On first sync, Render prompts for secret env vars (sync: false).
+# After first deploy, run once in Render Shell: npm run db:seed
+#
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: studio-3-ticketing-api
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm install
+    preDeployCommand: npm run db:push
+    startCommand: npm run start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FRONTEND_URL
+        sync: false
+      - key: PUBLIC_SITE_URL
+        value: https://studiosthree.com
+      - key: FINIX_ENV
+        value: prod
+      - key: FINIX_API_USERNAME
+        sync: false
+      - key: FINIX_API_PASSWORD
+        sync: false
+      - key: FINIX_MERCHANT_IDENTITY_ID
+        sync: false
+      - key: FINIX_MERCHANT_DISPLAY_NAME
+        value: Studio 3
+      - key: FINIX_WEBHOOK_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: EMAIL_FROM
+        value: tickets@studio3.dallas
+      - key: EVENT_SLUG
+        value: inside-the-mind-2026
