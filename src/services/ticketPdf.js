@@ -59,8 +59,8 @@ async function drawTicketPage(doc, data) {
   const x = (pw - W) / 2;
   const y = 64;
 
-  const headerH = 102;
-  const posterH = 170;
+  const headerH = 118;
+  const posterH = 132;
   const bodyH = 168;
   const qrH = 188;
   const totalH = headerH + posterH + bodyH + qrH;
@@ -72,7 +72,7 @@ async function drawTicketPage(doc, data) {
       color: { dark: C.text, light: C.white },
     }),
     getEventPosterBuffer(data.eventSlug || env.EVENT_SLUG),
-    getLogoBuffer(140),
+    getLogoBuffer(112),
   ]);
 
   doc.rect(0, 0, pw, ph).fill(C.page);
@@ -86,9 +86,9 @@ async function drawTicketPage(doc, data) {
 
   let cy = y;
 
-  // ── Header: logo first, label below with clear gap ──
-  const logoW = 58;
-  const logoY = cy + 10;
+  // ── Header: Studio 3 logo with wordmark ──
+  const logoW = 104;
+  const logoY = cy + 12;
   if (logoBuffer) {
     doc.image(logoBuffer, x + (W - logoW) / 2, logoY, { width: logoW });
   }
@@ -96,7 +96,7 @@ async function drawTicketPage(doc, data) {
     .font('Helvetica')
     .fontSize(7)
     .fillColor(C.muted)
-    .text('ADMISSION TICKET', x, logoY + logoW + 8, { width: W, align: 'center', characterSpacing: 1 });
+    .text('ADMISSION TICKET', x, logoY + logoW + 6, { width: W, align: 'center', characterSpacing: 1 });
 
   doc.strokeColor(C.line).lineWidth(1).moveTo(x + PAD, cy + headerH).lineTo(x + W - PAD, cy + headerH).stroke();
   cy += headerH;

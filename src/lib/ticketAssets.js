@@ -14,6 +14,7 @@ function findPosterPath(eventSlug) {
   const posterDir = path.join(ASSETS_ROOT, 'posters');
   const candidates = [
     ...POSTER_EXTENSIONS.map((ext) => path.join(posterDir, `${eventSlug}${ext}`)),
+    ...POSTER_EXTENSIONS.map((ext) => path.join(posterDir, `ticket-banner${ext}`)),
     ...POSTER_EXTENSIONS.map((ext) => path.join(posterDir, `art_gallery_poster${ext}`)),
     ...POSTER_EXTENSIONS.map((ext) => path.join(posterDir, `default${ext}`)),
   ];
@@ -33,7 +34,7 @@ export async function getEventPosterBuffer(eventSlug) {
   const localPath = findPosterPath(eventSlug);
   if (localPath) {
     return sharp(localPath)
-      .resize(720, 340, { fit: 'cover', position: 'centre' })
+      .resize(720, 264, { fit: 'cover', position: 'centre' })
       .jpeg({ quality: 90 })
       .toBuffer();
   }
