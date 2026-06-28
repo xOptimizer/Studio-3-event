@@ -3,7 +3,7 @@ import bcrypt from 'bcrypt';
 import { OrderStatus, TicketStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { generateTicketPdf, generateTicketsPdf } from './ticketPdf.js';
-import { sendFulfillmentEmail, sendTicketResendEmail } from './email.js';
+import { sendFulfillmentEmail, sendTicketResendEmail, sendFreePassEmail } from './email.js';
 import { assertEventCapacity } from './capacity.js';
 
 function generatePassword() {
@@ -186,6 +186,13 @@ export async function fulfillOrder(input) {
     to: input.buyerEmail,
     name: input.buyerName,
     eventTitle: event.title,
+    venue: event.venue,
+    address: event.address,
+    startsAt: event.startsAt,
+    tickets: fulfillment.ticketRecords.map((t) => ({
+      attendeeName: t.attendeeName,
+      confirmationCode: t.confirmationCode,
+    })),
     isNewUser: fulfillment.isNewUser,
     plainPassword: fulfillment.plainPassword,
     pdfBuffer: combinedPdf,
@@ -196,6 +203,124 @@ export async function fulfillOrder(input) {
     orderId: fulfillment.orderId,
     ticketIds: fulfillment.ticketIds,
     alreadyFulfilled: false,
+  };
+}
+
+async function issueOneFreePass(event, guest) {
+  const buyerEmail = guest.email.toLowerCase().trim();
+  const attendeeName = `${guest.firstName.trim()} ${guest.lastName.trim()}`.replace(/\s+/g, ' ');
+
+  const { user, isNewUser, plainPassword } = await findOrCreateUser({
+    buyerEmail,
+    buyerName: attendeeName,
+    buyerPhone: null,
+  });
+
+  const fulfillment = await prisma.$transaction(async (tx) => {
+    await assertEventCapacity(event.id, 1, tx);
+
+    const order = await tx.order.create({
+      data: {
+        userId: user.id,
+        eventId: event.id,
+        quantity: 1,
+        amountCents: 0,
+        status: OrderStatus.paid,
+        finixTransferId: null,
+        buyerEmail,
+      },
+    });
+
+    const ticket = await tx.ticket.create({
+      data: {
+        orderId: order.id,
+        userId: user.id,
+        confirmationCode: generateConfirmationCode(),
+        qrToken: generateQrToken(),
+        status: TicketStatus.valid,
+        attendeeName,
+      },
+    });
+
+    return { order, ticket, isNewUser, plainPassword };
+  });
+
+  const pdfTicket = {
+    eventSlug: event.slug,
+    eventTitle: event.title,
+    venue: event.venue,
+    address: event.address,
+    startsAt: event.startsAt,
+    attendeeName: fulfillment.ticket.attendeeName,
+    confirmationCode: fulfillment.ticket.confirmationCode,
+    qrToken: fulfillment.ticket.qrToken,
+    ticketType: 'Complimentary Pass',
+    status: fulfillment.ticket.status,
+  };
+
+  const pdfBuffer = await generateTicketPdf(pdfTicket);
+
+  await sendFreePassEmail({
+    to: buyerEmail,
+    name: attendeeName,
+    eventTitle: event.title,
+    venue: event.venue,
+    address: event.address,
+    startsAt: event.startsAt,
+    tickets: [
+      {
+        attendeeName: fulfillment.ticket.attendeeName,
+        confirmationCode: fulfillment.ticket.confirmationCode,
+      },
+    ],
+    isNewUser,
+    plainPassword,
+    pdfBuffer,
+    pdfFilename: `studio3-free-pass-${fulfillment.ticket.confirmationCode}.pdf`,
+  });
+
+  return {
+    orderId: fulfillment.order.id,
+    ticketId: fulfillment.ticket.id,
+    confirmationCode: fulfillment.ticket.confirmationCode,
+    email: buyerEmail,
+    name: attendeeName,
+  };
+}
+
+export async function issueFreePasses({ eventId, guests }) {
+  const event = await prisma.event.findUnique({ where: { id: eventId } });
+  if (!event) {
+    return { ok: false, status: 404, error: 'Event not found' };
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${event.id} FOR UPDATE`;
+    await assertEventCapacity(event.id, guests.length, tx);
+  });
+
+  const issued = [];
+  const failed = [];
+
+  for (const guest of guests) {
+    try {
+      const result = await issueOneFreePass(event, guest);
+      issued.push(result);
+    } catch (error) {
+      failed.push({
+        email: guest.email,
+        name: `${guest.firstName} ${guest.lastName}`.trim(),
+        error: error.message || 'Failed to issue pass',
+      });
+    }
+  }
+
+  return {
+    ok: true,
+    issued,
+    failed,
+    issuedCount: issued.length,
+    failedCount: failed.length,
   };
 }
 

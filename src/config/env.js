@@ -5,6 +5,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   JWT_SECRET: z.string().min(16),
   FRONTEND_URL: z.string().url(),
+  PUBLIC_SITE_URL: z.string().url().default('https://studiosthree.com'),
   FINIX_ENV: z.enum(['sandbox', 'prod']).default('sandbox'),
   FINIX_API_USERNAME: z.string().min(1),
   FINIX_API_PASSWORD: z.string().min(1),
