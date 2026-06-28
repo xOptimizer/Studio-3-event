@@ -1,4 +1,6 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
+dotenv.config({ override: true });
+
 import { PrismaClient } from '@prisma/client';
 import { resolveDatabaseUrl } from './resolve-database-url.js';
 

@@ -11,7 +11,13 @@ import {
   createWalletPaymentInstrument,
 } from '../services/finix.js';
 import { fulfillOrder } from '../services/fulfillment.js';
-import { assertEventCapacity, CapacityExceededError } from '../services/capacity.js';
+import { assertEventCapacity, CapacityExceededError, countSoldTickets } from '../services/capacity.js';
+import {
+  calculateTieredOrderPricing,
+  getEventPricingTiers,
+  SALES_TAX_RATE,
+  SERVICE_FEE_RATE,
+} from '../lib/pricing.js';
 
 const router = Router();
 
@@ -171,15 +177,35 @@ router.get('/config', async (_req, res) => {
       return;
     }
 
+    const soldCount = await countSoldTickets(event.id);
+    const tiers = getEventPricingTiers(event);
+    const samplePricing = calculateTieredOrderPricing({
+      soldCount,
+      quantity: 1,
+      ...tiers,
+    });
+
     res.json({
       finixEnv: env.FINIX_ENV,
       merchantIdentityId: env.FINIX_MERCHANT_IDENTITY_ID,
       merchantDisplayName: env.FINIX_MERCHANT_DISPLAY_NAME,
       paymentMethods: ['card', 'apple_pay', 'google_pay'],
+      pricing: {
+        salesTaxRate: SALES_TAX_RATE,
+        serviceFeeRate: SERVICE_FEE_RATE,
+        soldCount,
+        earlyBirdLimit: tiers.earlyBirdLimit,
+        earlyBirdRemaining: samplePricing.earlyBirdRemaining,
+        earlyBirdPriceCents: tiers.earlyBirdPriceCents,
+        regularPriceCents: tiers.regularPriceCents,
+        currentTier: samplePricing.currentTier,
+      },
       event: {
         slug: event.slug,
         title: event.title,
         priceCents: event.priceCents,
+        regularPriceCents: event.regularPriceCents,
+        earlyBirdLimit: event.earlyBirdLimit,
         currency: event.currency,
         venue: event.venue,
         startsAt: event.startsAt,
@@ -235,7 +261,14 @@ router.post('/', checkoutLimiter, async (req, res) => {
       return;
     }
 
-    const amountCents = event.priceCents * quantity;
+    const soldCount = await countSoldTickets(event.id);
+    const tiers = getEventPricingTiers(event);
+    const pricing = calculateTieredOrderPricing({
+      soldCount,
+      quantity,
+      ...tiers,
+    });
+    const { totalCents: amountCents } = pricing;
 
     await assertEventCapacity(event.id, quantity);
 

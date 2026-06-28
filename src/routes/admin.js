@@ -6,7 +6,8 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { resendOrderTickets, issueFreePasses } from '../services/fulfillment.js';
-import { CapacityExceededError } from '../services/capacity.js';
+import { CapacityExceededError, countSoldTickets } from '../services/capacity.js';
+import { findTicketByVerificationInput, formatVerifiedTicket } from '../lib/ticketLookup.js';
 
 const router = Router();
 
@@ -23,24 +24,24 @@ const freePassSchema = z.object({
   guests: z.array(guestSchema).min(1).max(50),
 });
 
-const verifySchema = z.object({
-  qrToken: z.string().min(1),
-});
+const ticketLookupSchema = z
+  .object({
+    qrToken: z.string().min(1).optional(),
+    bookingId: z.string().min(1).optional(),
+    ticketId: z.string().min(1).optional(),
+  })
+  .refine((data) => Boolean(data.qrToken || data.bookingId || data.ticketId), {
+    message: 'Provide qrToken, bookingId, or ticketId',
+  });
 
 router.post('/tickets/verify', async (req, res) => {
-  const parsed = verifySchema.safeParse(req.body);
+  const parsed = ticketLookupSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid qrToken' });
+    res.status(400).json({ error: 'Provide qrToken, bookingId, or ticketId' });
     return;
   }
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { qrToken: parsed.data.qrToken },
-    include: {
-      order: { include: { event: true } },
-      user: { select: { email: true, name: true } },
-    },
-  });
+  const ticket = await findTicketByVerificationInput(parsed.data);
 
   if (!ticket || ticket.order.status !== 'paid') {
     res.json({
@@ -65,37 +66,18 @@ router.post('/tickets/verify', async (req, res) => {
   res.json({
     valid: result === 'valid',
     result,
-    ticket: {
-      id: ticket.id,
-      confirmationCode: ticket.confirmationCode,
-      status: ticket.status,
-      attendeeName: ticket.attendeeName,
-      checkedInAt: ticket.checkedInAt,
-      event: {
-        title: ticket.order.event.title,
-        venue: ticket.order.event.venue,
-        startsAt: ticket.order.event.startsAt,
-      },
-      buyerEmail: ticket.user.email,
-    },
+    ticket: formatVerifiedTicket(ticket),
   });
-});
-
-const checkInSchema = z.object({
-  qrToken: z.string().min(1),
 });
 
 router.post('/tickets/check-in', async (req, res) => {
-  const parsed = checkInSchema.safeParse(req.body);
+  const parsed = ticketLookupSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: 'Invalid qrToken' });
+    res.status(400).json({ error: 'Provide qrToken, bookingId, or ticketId' });
     return;
   }
 
-  const ticket = await prisma.ticket.findUnique({
-    where: { qrToken: parsed.data.qrToken },
-    include: { order: true },
-  });
+  const ticket = await findTicketByVerificationInput(parsed.data);
 
   if (!ticket || ticket.order.status !== 'paid') {
     res.status(404).json({ error: 'Invalid ticket' });
@@ -141,6 +123,77 @@ router.post('/tickets/check-in', async (req, res) => {
   });
 });
 
+router.get('/stats', async (_req, res) => {
+  const event = await prisma.event.findUnique({
+    where: { slug: env.EVENT_SLUG },
+  });
+
+  if (!event) {
+    res.status(404).json({ error: 'Event not found' });
+    return;
+  }
+
+  const ticketsSold = await countSoldTickets(event.id);
+  const earlyBirdSold = Math.min(ticketsSold, event.earlyBirdLimit);
+  const earlyBirdRemaining = Math.max(0, event.earlyBirdLimit - ticketsSold);
+
+  res.json({
+    event: {
+      title: event.title,
+      earlyBirdLimit: event.earlyBirdLimit,
+      earlyBirdPriceCents: event.priceCents,
+      regularPriceCents: event.regularPriceCents,
+    },
+    ticketsSold,
+    earlyBirdSold,
+    earlyBirdRemaining,
+    regularSold: Math.max(0, ticketsSold - event.earlyBirdLimit),
+  });
+});
+
+router.get('/check-ins', async (_req, res) => {
+  const tickets = await prisma.ticket.findMany({
+    where: {
+      status: TicketStatus.used,
+      checkedInAt: { not: null },
+      order: { status: OrderStatus.paid },
+    },
+    include: {
+      order: { include: { event: true } },
+      user: { select: { email: true, name: true } },
+    },
+    orderBy: { checkedInAt: 'desc' },
+    take: 500,
+  });
+
+  const adminIds = [...new Set(tickets.map((t) => t.checkedInById).filter(Boolean))];
+  const admins =
+    adminIds.length > 0
+      ? await prisma.user.findMany({
+          where: { id: { in: adminIds } },
+          select: { id: true, name: true },
+        })
+      : [];
+  const adminById = Object.fromEntries(admins.map((a) => [a.id, a.name]));
+
+  res.json({
+    total: tickets.length,
+    checkIns: tickets.map((t) => ({
+      id: t.id,
+      attendeeName: t.attendeeName,
+      confirmationCode: t.confirmationCode,
+      checkedInAt: t.checkedInAt,
+      checkedInBy: t.checkedInById ? adminById[t.checkedInById] || null : null,
+      buyerEmail: t.user.email,
+      buyerName: t.user.name,
+      event: {
+        title: t.order.event.title,
+        venue: t.order.event.venue,
+      },
+    })),
+  });
+});
+
 router.get('/events', async (_req, res) => {
   const events = await prisma.event.findMany({
     orderBy: { startsAt: 'asc' },
@@ -152,6 +205,8 @@ router.get('/events', async (_req, res) => {
       startsAt: true,
       endsAt: true,
       priceCents: true,
+      regularPriceCents: true,
+      earlyBirdLimit: true,
       capacity: true,
     },
   });

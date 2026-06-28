@@ -11,6 +11,7 @@
     "db:migrate": "node scripts/run-prisma.mjs migrate dev",
     "db:studio": "node scripts/run-prisma.mjs studio",
     "db:seed": "node --import ./src/setup-dns.js prisma/seed.js",
+    "db:reset": "node --import ./src/setup-dns.js prisma/seed.js --fresh",
     "postinstall": "prisma generate"
   },
   "prisma": {

@@ -49,8 +49,10 @@ model Event {
   address    String
   startsAt   DateTime
   endsAt     DateTime
-  priceCents Int
-  currency   String   @default("USD")
+  priceCents     Int
+  regularPriceCents Int @default(9995)
+  earlyBirdLimit    Int @default(55)
+  currency       String   @default("USD")
   capacity   Int?
   orders     Order[]
 }

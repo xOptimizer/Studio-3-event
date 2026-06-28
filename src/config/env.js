@@ -1,5 +1,7 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import { z } from 'zod';
+
+dotenv.config({ override: true });
 
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
