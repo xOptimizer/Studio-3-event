@@ -45,6 +45,10 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+app.get('/', (_req, res) => {
+  res.type('text').send('Studio 3 Event Server running');
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
