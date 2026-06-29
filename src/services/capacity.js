@@ -1,6 +1,11 @@
 import { OrderStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 
+/** Paid complimentary orders (free passes), including legacy $0 orders without a Finix transfer. */
+export const complimentaryOrderWhere = {
+  OR: [{ isFreePass: true }, { amountCents: 0, finixTransferId: null }],
+};
+
 export class CapacityExceededError extends Error {
   constructor(capacity, soldCount, requested) {
     super('Event capacity exceeded');
@@ -15,7 +20,23 @@ export class CapacityExceededError extends Error {
 export async function countSoldTickets(eventId, tx = prisma) {
   return tx.ticket.count({
     where: {
-      order: { eventId, status: OrderStatus.paid },
+      order: {
+        eventId,
+        status: OrderStatus.paid,
+        NOT: complimentaryOrderWhere,
+      },
+    },
+  });
+}
+
+export async function countFreePasses(eventId, tx = prisma) {
+  return tx.ticket.count({
+    where: {
+      order: {
+        eventId,
+        status: OrderStatus.paid,
+        ...complimentaryOrderWhere,
+      },
     },
   });
 }

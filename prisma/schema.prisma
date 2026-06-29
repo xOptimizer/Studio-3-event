@@ -69,6 +69,7 @@ model Order {
   finixTransferId String?     @unique
   buyerEmail      String
   buyerPhone      String?
+  isFreePass      Boolean     @default(false)
   createdAt       DateTime    @default(now())
   tickets         Ticket[]
 }

@@ -6,7 +6,7 @@ import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 import { resendOrderTickets, issueFreePasses } from '../services/fulfillment.js';
-import { CapacityExceededError, countSoldTickets } from '../services/capacity.js';
+import { CapacityExceededError, countSoldTickets, countFreePasses, complimentaryOrderWhere } from '../services/capacity.js';
 import { findTicketByVerificationInput, formatVerifiedTicket } from '../lib/ticketLookup.js';
 
 const router = Router();
@@ -134,6 +134,7 @@ router.get('/stats', async (_req, res) => {
   }
 
   const ticketsSold = await countSoldTickets(event.id);
+  const freePassesIssued = await countFreePasses(event.id);
   const earlyBirdSold = Math.min(ticketsSold, event.earlyBirdLimit);
   const earlyBirdRemaining = Math.max(0, event.earlyBirdLimit - ticketsSold);
 
@@ -145,6 +146,7 @@ router.get('/stats', async (_req, res) => {
       regularPriceCents: event.regularPriceCents,
     },
     ticketsSold,
+    freePassesIssued,
     earlyBirdSold,
     earlyBirdRemaining,
     regularSold: Math.max(0, ticketsSold - event.earlyBirdLimit),
@@ -251,8 +253,46 @@ router.post('/free-passes', async (req, res) => {
   }
 });
 
+router.get('/free-passes', async (_req, res) => {
+  const passes = await prisma.ticket.findMany({
+    where: {
+      order: {
+        status: OrderStatus.paid,
+        ...complimentaryOrderWhere,
+      },
+    },
+    include: {
+      order: { include: { event: true } },
+      user: { select: { email: true, name: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+  });
+
+  res.json({
+    total: passes.length,
+    freePasses: passes.map((t) => ({
+      id: t.id,
+      attendeeName: t.attendeeName,
+      confirmationCode: t.confirmationCode,
+      status: t.status,
+      checkedInAt: t.checkedInAt,
+      email: t.user.email,
+      event: {
+        id: t.order.event.id,
+        title: t.order.event.title,
+        venue: t.order.event.venue,
+      },
+      issuedAt: t.createdAt,
+    })),
+  });
+});
+
 router.get('/orders', async (_req, res) => {
   const orders = await prisma.order.findMany({
+    where: {
+      NOT: complimentaryOrderWhere,
+    },
     include: {
       event: true,
       user: { select: { email: true, name: true } },

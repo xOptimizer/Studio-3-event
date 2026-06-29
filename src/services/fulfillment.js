@@ -217,8 +217,6 @@ async function issueOneFreePass(event, guest) {
   });
 
   const fulfillment = await prisma.$transaction(async (tx) => {
-    await assertEventCapacity(event.id, 1, tx);
-
     const order = await tx.order.create({
       data: {
         userId: user.id,
@@ -228,6 +226,7 @@ async function issueOneFreePass(event, guest) {
         status: OrderStatus.paid,
         finixTransferId: null,
         buyerEmail,
+        isFreePass: true,
       },
     });
 
@@ -293,11 +292,6 @@ export async function issueFreePasses({ eventId, guests }) {
   if (!event) {
     return { ok: false, status: 404, error: 'Event not found' };
   }
-
-  await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${event.id} FOR UPDATE`;
-    await assertEventCapacity(event.id, guests.length, tx);
-  });
 
   const issued = [];
   const failed = [];
