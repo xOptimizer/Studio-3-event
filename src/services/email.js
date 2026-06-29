@@ -1,5 +1,7 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env.js';
+import { EMAIL_BANNER_CID, getEmailBannerBuffer } from '../lib/emailAssets.js';
+import { buildTicketDeliveryEmailContent } from '../templates/ticketEmailTemplate.js';
 
 let transporter = null;
 
@@ -23,101 +25,29 @@ function getTransporter() {
   return transporter;
 }
 
-function formatEventDateTime(iso) {
-  if (!iso) return null;
-  return new Date(iso).toLocaleString('en-US', {
-    weekday: 'long',
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    timeZoneName: 'short',
-  });
-}
-
 function loginUrl() {
   return env.PUBLIC_SITE_URL.replace(/\/$/, '');
 }
 
-function buildLoginSection({ to, isNewUser, plainPassword }) {
-  const site = loginUrl();
-  if (isNewUser && plainPassword) {
-    return `Your account has been created. Log in to view your tickets anytime:
-
-Email: ${to}
-Password: ${plainPassword}
-
-Login: ${site}`;
-  }
-
-  return `You can log in with your existing Studio 3 account to view your tickets:
-
-${site}`;
-}
-
-function buildTicketLines(tickets) {
-  if (!tickets?.length) return '';
-
-  return tickets
-    .map((ticket, index) => {
-      const prefix = tickets.length > 1 ? `Ticket ${index + 1}\n` : '';
-      return `${prefix}  Attendee: ${ticket.attendeeName}
-  Confirmation code: ${ticket.confirmationCode}`;
-    })
-    .join('\n\n');
-}
-
 export function buildTicketDeliveryEmailText(params) {
-  const {
-    name,
-    to,
-    eventTitle,
-    venue,
-    address,
-    startsAt,
-    tickets = [],
-    isNewUser,
-    plainPassword,
-    isComplimentary = false,
-  } = params;
-
-  const intro = isComplimentary
-    ? `You've received a complimentary pass for ${eventTitle}.`
-    : `Thank you for your purchase for ${eventTitle}.`;
-
-  const dateLine = formatEventDateTime(startsAt);
-  const eventDetails = [
-    'Event details:',
-    eventTitle,
-    venue ? `Venue: ${venue}` : null,
-    address ? `Address: ${address}` : null,
-    dateLine ? `Date: ${dateLine}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
-
-  const ticketBlock = tickets.length
-    ? `\nYour ticket${tickets.length > 1 ? 's' : ''}:\n${buildTicketLines(tickets)}`
-    : '';
-
-  return `Hi ${name},
-
-${intro}
-
-${eventDetails}${ticketBlock}
-
-Your ticket(s) are attached as a PDF. Each ticket includes a QR code for entry at the door.
-
-${buildLoginSection({ to, isNewUser, plainPassword })}
-
-See you there,
-Studio 3`;
+  const { text } = buildTicketDeliveryEmailContent({
+    ...params,
+    siteUrl: loginUrl(),
+    hasBanner: false,
+  });
+  return text;
 }
 
 async function sendTicketDeliveryEmail(params) {
   const transport = getTransporter();
-  const text = buildTicketDeliveryEmailText(params);
+  const bannerBuffer = await getEmailBannerBuffer();
+  const hasBanner = Boolean(bannerBuffer);
+  const { text, html } = buildTicketDeliveryEmailContent({
+    ...params,
+    siteUrl: loginUrl(),
+    hasBanner,
+  });
+
   const subject = params.isComplimentary
     ? `Your complimentary Studio 3 pass — ${params.eventTitle}`
     : `Your Studio 3 ticket — ${params.eventTitle}`;
@@ -128,18 +58,30 @@ async function sendTicketDeliveryEmail(params) {
     return;
   }
 
+  const attachments = [
+    {
+      filename: params.pdfFilename,
+      content: params.pdfBuffer,
+      contentType: 'application/pdf',
+    },
+  ];
+
+  if (bannerBuffer) {
+    attachments.unshift({
+      filename: 'ticket-banner.jpg',
+      content: bannerBuffer,
+      cid: EMAIL_BANNER_CID,
+      contentType: 'image/jpeg',
+    });
+  }
+
   await transport.sendMail({
     from: env.EMAIL_FROM,
     to: params.to,
     subject,
     text,
-    attachments: [
-      {
-        filename: params.pdfFilename,
-        content: params.pdfBuffer,
-        contentType: 'application/pdf',
-      },
-    ],
+    html,
+    attachments,
   });
 }
 

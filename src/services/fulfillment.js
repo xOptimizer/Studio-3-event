@@ -173,6 +173,7 @@ export async function fulfillOrder(input) {
     venue: event.venue,
     address: event.address,
     startsAt: event.startsAt,
+    endsAt: event.endsAt,
     attendeeName: t.attendeeName,
     confirmationCode: t.confirmationCode,
     qrToken: t.qrToken,
@@ -189,6 +190,7 @@ export async function fulfillOrder(input) {
     venue: event.venue,
     address: event.address,
     startsAt: event.startsAt,
+    endsAt: event.endsAt,
     tickets: fulfillment.ticketRecords.map((t) => ({
       attendeeName: t.attendeeName,
       confirmationCode: t.confirmationCode,
@@ -250,6 +252,7 @@ async function issueOneFreePass(event, guest) {
     venue: event.venue,
     address: event.address,
     startsAt: event.startsAt,
+    endsAt: event.endsAt,
     attendeeName: fulfillment.ticket.attendeeName,
     confirmationCode: fulfillment.ticket.confirmationCode,
     qrToken: fulfillment.ticket.qrToken,
@@ -266,6 +269,7 @@ async function issueOneFreePass(event, guest) {
     venue: event.venue,
     address: event.address,
     startsAt: event.startsAt,
+    endsAt: event.endsAt,
     tickets: [
       {
         attendeeName: fulfillment.ticket.attendeeName,
@@ -346,6 +350,7 @@ export async function resendOrderTickets(orderId) {
     venue: order.event.venue,
     address: order.event.address,
     startsAt: order.event.startsAt,
+    endsAt: order.event.endsAt,
     attendeeName: t.attendeeName,
     confirmationCode: t.confirmationCode,
     qrToken: t.qrToken,
@@ -386,6 +391,7 @@ export async function getTicketPdfForUser(ticketId, userId) {
     venue: ticket.order.event.venue,
     address: ticket.order.event.address,
     startsAt: ticket.order.event.startsAt,
+    endsAt: ticket.order.event.endsAt,
     attendeeName: ticket.attendeeName,
     confirmationCode: ticket.confirmationCode,
     qrToken: ticket.qrToken,

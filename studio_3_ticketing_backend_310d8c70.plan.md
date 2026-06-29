@@ -45,7 +45,7 @@ Use this doc when opening the **new backend repo**. The frontend stays in [Studi
 
 **Event:** Inside the Mind of an Artist  
 **Venue:** Dec on Dragon · 1414 Dragon St, Dallas, TX 75207  
-**Date:** Saturday, July 25, 2026 · 8:00 PM – 2:00 AM CDT  
+**Date:** Saturday, July 25, 2026 · 8:00 PM – 12:00 AM CDT  
 **Price:** $49.95 General Admission (early bird), max **5 tickets** per order  
 **Payment:** Finix embedded checkout ([Finix.js](https://docs.finix.com/js) in modal + Finix API on server)
 

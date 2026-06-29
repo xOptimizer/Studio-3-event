@@ -1,6 +1,7 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import { env } from '../config/env.js';
+import { EVENT_DISPLAY } from '../constants/eventDisplay.js';
 import { getEventPosterBuffer, getLogoBuffer } from '../lib/ticketAssets.js';
 
 const C = {
@@ -15,12 +16,12 @@ const W = 360;
 const PAD = 28;
 const R = 16;
 
-function fmtDate(d) {
-  return new Date(d).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' });
+function fmtDate() {
+  return EVENT_DISPLAY.dateLabel;
 }
 
-function fmtTime(d) {
-  return new Date(d).toLocaleString('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
+function fmtTime() {
+  return EVENT_DISPLAY.timeLabel;
 }
 
 function fmtBookingId(code) {
@@ -131,10 +132,10 @@ async function drawTicketPage(doc, data) {
   const gridY = cy + 88;
 
   label(doc, 'Date', bx, gridY);
-  value(doc, fmtDate(data.startsAt), bx, gridY + 10, colW);
+  value(doc, fmtDate(), bx, gridY + 10, colW);
 
   label(doc, 'Time', bx + colW + 12, gridY);
-  value(doc, fmtTime(data.startsAt), bx + colW + 12, gridY + 10, colW);
+  value(doc, fmtTime(), bx + colW + 12, gridY + 10, colW);
 
   label(doc, 'Admit', bx, gridY + 40);
   value(doc, '01 only', bx, gridY + 50, colW);

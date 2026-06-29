@@ -12,6 +12,7 @@
     "db:studio": "node scripts/run-prisma.mjs studio",
     "db:seed": "node --import ./src/setup-dns.js prisma/seed.js",
     "db:reset": "node --import ./src/setup-dns.js prisma/seed.js --fresh",
+    "db:patch-event-times": "node --import ./src/setup-dns.js scripts/patch-event-times.mjs",
     "postinstall": "prisma generate"
   },
   "prisma": {

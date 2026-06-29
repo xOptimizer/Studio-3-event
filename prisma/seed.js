@@ -4,6 +4,7 @@ dotenv.config({ override: true });
 import { PrismaClient, UserRole } from '@prisma/client';
 import bcrypt from 'bcrypt';
 import { resolveDatabaseUrl } from '../src/lib/resolve-database-url.js';
+import { EVENT_DISPLAY } from '../src/constants/eventDisplay.js';
 
 const databaseUrl = await resolveDatabaseUrl(process.env.DATABASE_URL);
 const prisma = new PrismaClient({
@@ -26,8 +27,8 @@ export async function seedDatabase(client = prisma) {
       title: 'Inside the Mind of an Artist',
       venue: 'Dec on Dragon',
       address: '1414 Dragon St, Dallas, TX 75207',
-      startsAt: new Date('2026-07-26T01:00:00.000Z'),
-      endsAt: new Date('2026-07-26T07:00:00.000Z'),
+      startsAt: EVENT_DISPLAY.startsAt,
+      endsAt: EVENT_DISPLAY.endsAt,
       priceCents: 4995,
       regularPriceCents: 9995,
       earlyBirdLimit: 55,

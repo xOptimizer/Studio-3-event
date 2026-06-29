@@ -11,7 +11,7 @@ export async function finixRequest(path, options = {}) {
     headers: {
       Authorization: getAuthHeader(),
       'Content-Type': 'application/json',
-      Accept: 'application/json',
+      Accept: 'application/hal+json',
       'Finix-Version': '2022-02-01',
     },
     body: options.body ? JSON.stringify(options.body) : undefined,
