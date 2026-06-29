@@ -5,7 +5,8 @@ import { OrderStatus, TicketStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
 import { env } from '../config/env.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
-import { resendOrderTickets, issueFreePasses } from '../services/fulfillment.js';
+import { resendOrderTickets, issueFreePasses, fulfillPaidTransfer } from '../services/fulfillment.js';
+import { findDuplicateOrdersForEmail, refundOrder } from '../services/refunds.js';
 import { CapacityExceededError, countSoldTickets, countFreePasses, complimentaryOrderWhere } from '../services/capacity.js';
 import { findTicketByVerificationInput, formatVerifiedTicket } from '../lib/ticketLookup.js';
 
@@ -329,6 +330,91 @@ router.post('/orders/:orderId/resend', async (req, res) => {
     email: result.email,
     ticketCount: result.ticketCount,
   });
+});
+
+const refundOrderSchema = z.object({
+  reason: z.string().max(200).optional(),
+});
+
+router.post('/orders/:orderId/refund', async (req, res) => {
+  const orderId = String(req.params.orderId);
+  const parsed = refundOrderSchema.safeParse(req.body ?? {});
+
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const result = await refundOrder(orderId, parsed.data);
+
+    if (!result.ok) {
+      res.status(result.status || 400).json({ error: result.error });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: 'Refund initiated in Finix',
+      orderId: result.orderId,
+      finixTransferId: result.finixTransferId,
+      reversalId: result.reversalId,
+      reversalState: result.reversalState,
+    });
+  } catch (error) {
+    console.error('[admin refund]', error);
+    res.status(500).json({
+      error: 'Refund failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
+});
+
+router.get('/orders/duplicates', async (req, res) => {
+  const email = typeof req.query.email === 'string' ? req.query.email.trim() : '';
+  const eventId = typeof req.query.eventId === 'string' ? req.query.eventId.trim() : undefined;
+
+  if (!email) {
+    res.status(400).json({ error: 'Query param email is required' });
+    return;
+  }
+
+  const result = await findDuplicateOrdersForEmail(email, eventId);
+  res.json(result);
+});
+
+router.post('/orders/fulfill-by-transfer', async (req, res) => {
+  const schema = z.object({
+    finixTransferId: z.string().min(1),
+    buyerName: z.string().min(1).max(200),
+    buyerEmail: z.string().email(),
+    buyerPhone: z.string().min(7).max(30).optional(),
+    quantity: z.number().int().min(1).max(5),
+    amountCents: z.number().int().min(0),
+    eventId: z.string().min(1),
+  });
+
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: 'Invalid request', details: parsed.error.flatten() });
+    return;
+  }
+
+  try {
+    const result = await fulfillPaidTransfer(parsed.data);
+    res.json({
+      success: true,
+      orderId: result.orderId,
+      ticketIds: result.ticketIds,
+      alreadyFulfilled: result.alreadyFulfilled,
+    });
+  } catch (error) {
+    console.error('[admin fulfill-by-transfer]', error);
+    res.status(500).json({
+      error: 'Fulfillment failed',
+      message: error instanceof Error ? error.message : 'Unknown error',
+    });
+  }
 });
 
 router.get('/tickets/:id/qr', async (req, res) => {

@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import bcrypt from 'bcrypt';
 import { OrderStatus, TicketStatus, UserRole } from '@prisma/client';
 import { prisma } from '../lib/prisma.js';
+import { runTransaction } from '../lib/prisma-transaction.js';
 import { generateTicketPdf, generateTicketsPdf } from './ticketPdf.js';
 import { sendFulfillmentEmail, sendTicketResendEmail, sendFreePassEmail } from './email.js';
 import { assertEventCapacity } from './capacity.js';
@@ -58,6 +59,57 @@ async function findOrCreateUser(input) {
   return { user, isNewUser, plainPassword };
 }
 
+export async function findRecoverablePendingOrder(eventId, buyerEmail) {
+  return prisma.order.findFirst({
+    where: {
+      eventId,
+      buyerEmail: buyerEmail.toLowerCase(),
+      status: OrderStatus.pending,
+      finixTransferId: { not: null },
+      isFreePass: false,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+}
+
+export function toFulfillmentInput(order, { buyerName, buyerPhone } = {}) {
+  return {
+    finixTransferId: order.finixTransferId,
+    buyerName: buyerName ?? order.buyerEmail,
+    buyerEmail: order.buyerEmail,
+    buyerPhone: buyerPhone ?? order.buyerPhone,
+    quantity: order.quantity,
+    amountCents: order.amountCents,
+    eventId: order.eventId,
+  };
+}
+
+/** Persist payment immediately after Finix succeeds so retries never charge again. */
+export async function recordPendingOrderAfterTransfer(input) {
+  const { user } = await findOrCreateUser(input);
+
+  return prisma.order.upsert({
+    where: { finixTransferId: input.finixTransferId },
+    create: {
+      userId: user.id,
+      eventId: input.eventId,
+      quantity: input.quantity,
+      amountCents: input.amountCents,
+      status: OrderStatus.pending,
+      finixTransferId: input.finixTransferId,
+      buyerEmail: input.buyerEmail.toLowerCase(),
+      buyerPhone: input.buyerPhone,
+    },
+    update: {},
+    include: { tickets: true },
+  });
+}
+
+export async function fulfillPaidTransfer(input) {
+  await recordPendingOrderAfterTransfer(input);
+  return fulfillOrder(input);
+}
+
 async function findOrCreatePendingOrder(tx, input, userId, eventId) {
   const existing = await tx.order.findUnique({
     where: { finixTransferId: input.finixTransferId },
@@ -97,7 +149,7 @@ export async function fulfillOrder(input) {
   const event = await prisma.event.findUniqueOrThrow({ where: { id: input.eventId } });
   const { user, isNewUser, plainPassword } = await findOrCreateUser(input);
 
-  const fulfillment = await prisma.$transaction(async (tx) => {
+  const fulfillment = await runTransaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Event" WHERE id = ${event.id} FOR UPDATE`;
 
     const order = await findOrCreatePendingOrder(tx, input, user.id, event.id);
@@ -134,20 +186,21 @@ export async function fulfillOrder(input) {
       throw new Error(`Order ${order.id} could not be marked paid`);
     }
 
-    const created = [];
-    for (let i = 0; i < input.quantity; i++) {
-      const ticket = await tx.ticket.create({
-        data: {
-          orderId: order.id,
-          userId: user.id,
-          confirmationCode: generateConfirmationCode(),
-          qrToken: generateQrToken(),
-          status: TicketStatus.valid,
-          attendeeName: input.buyerName,
-        },
-      });
-      created.push(ticket);
-    }
+    const ticketData = Array.from({ length: input.quantity }, () => ({
+      orderId: order.id,
+      userId: user.id,
+      confirmationCode: generateConfirmationCode(),
+      qrToken: generateQrToken(),
+      status: TicketStatus.valid,
+      attendeeName: input.buyerName,
+    }));
+
+    await tx.ticket.createMany({ data: ticketData });
+
+    const created = await tx.ticket.findMany({
+      where: { orderId: order.id },
+      orderBy: { createdAt: 'asc' },
+    });
 
     return {
       orderId: order.id,
@@ -218,7 +271,7 @@ async function issueOneFreePass(event, guest) {
     buyerPhone: null,
   });
 
-  const fulfillment = await prisma.$transaction(async (tx) => {
+  const fulfillment = await runTransaction(async (tx) => {
     const order = await tx.order.create({
       data: {
         userId: user.id,

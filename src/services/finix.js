@@ -83,7 +83,7 @@ export async function createApplePaySession({ displayName, domain, merchantIdent
   });
 }
 
-export async function createTransfer(paymentInstrumentId, amountCents, fraudSessionId, tags) {
+export async function createTransfer(paymentInstrumentId, amountCents, fraudSessionId, tags, idempotencyId) {
   const body = {
     amount: amountCents,
     currency: 'USD',
@@ -99,7 +99,32 @@ export async function createTransfer(paymentInstrumentId, amountCents, fraudSess
     body.tags = tags;
   }
 
+  if (idempotencyId) {
+    body.idempotency_id = idempotencyId;
+  }
+
   return finixRequest('/transfers', {
+    method: 'POST',
+    body,
+  });
+}
+
+export async function reverseTransfer(transferId, { refundAmountCents, idempotencyId, tags } = {}) {
+  const body = {};
+
+  if (refundAmountCents != null) {
+    body.refund_amount = refundAmountCents;
+  }
+
+  if (idempotencyId) {
+    body.idempotency_id = idempotencyId;
+  }
+
+  if (tags) {
+    body.tags = tags;
+  }
+
+  return finixRequest(`/transfers/${transferId}/reversals`, {
     method: 'POST',
     body,
   });

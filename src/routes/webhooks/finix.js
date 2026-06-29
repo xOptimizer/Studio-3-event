@@ -2,7 +2,7 @@ import { Router } from 'express';
 import crypto from 'crypto';
 import { env } from '../../config/env.js';
 import { getTransfer } from '../../services/finix.js';
-import { fulfillOrder } from '../../services/fulfillment.js';
+import { fulfillPaidTransfer } from '../../services/fulfillment.js';
 import { CapacityExceededError } from '../../services/capacity.js';
 
 const router = Router();
@@ -62,7 +62,7 @@ router.post('/finix', async (req, res) => {
       }
 
       try {
-        await fulfillOrder({
+        await fulfillPaidTransfer({
           finixTransferId: transfer.id,
           buyerName,
           buyerEmail,

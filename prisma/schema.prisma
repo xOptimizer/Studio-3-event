@@ -72,6 +72,22 @@ model Order {
   isFreePass      Boolean     @default(false)
   createdAt       DateTime    @default(now())
   tickets         Ticket[]
+
+  @@index([eventId, buyerEmail, status])
+}
+
+// Prevents concurrent/retry double-charges for the same buyer + event.
+model CheckoutLock {
+  id              String   @id @default(cuid())
+  eventId         String
+  buyerEmail      String
+  idempotencyKey  String   @unique
+  finixTransferId String?
+  expiresAt       DateTime
+  createdAt       DateTime @default(now())
+
+  @@unique([eventId, buyerEmail])
+  @@index([expiresAt])
 }
 
 model Ticket {

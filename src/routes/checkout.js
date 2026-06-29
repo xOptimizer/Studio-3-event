@@ -9,8 +9,18 @@ import {
   createPaymentInstrument,
   createTransfer,
   createWalletPaymentInstrument,
+  getTransfer,
 } from '../services/finix.js';
-import { fulfillOrder } from '../services/fulfillment.js';
+import {
+  findRecoverablePendingOrder,
+  fulfillPaidTransfer,
+  recordPendingOrderAfterTransfer,
+  toFulfillmentInput,
+} from '../services/fulfillment.js';
+import {
+  acquireCheckoutLock,
+  attachTransferToCheckoutLock,
+} from '../services/checkout-lock.js';
 import { assertEventCapacity, CapacityExceededError, countSoldTickets } from '../services/capacity.js';
 import {
   calculateTieredOrderPricing,
@@ -109,33 +119,91 @@ async function createPaymentInstrumentForCheckout(identityId, checkout, buyerNam
   });
 }
 
-function respondToTransfer(res, transfer, fulfillmentInput) {
+const PAYMENT_RECEIVED_MESSAGE =
+  'Payment received. Your tickets are being processed and will be emailed shortly. Please do not pay again.';
+
+const PAYMENT_ALREADY_RECEIVED_MESSAGE =
+  'We already received your payment but ticket delivery is still processing. Please do not pay again. You will receive an email shortly, or contact support if it does not arrive within 30 minutes.';
+
+async function respondToTransfer(res, transfer, fulfillmentInput) {
   if (transfer.state === 'SUCCEEDED') {
-    return fulfillOrder(fulfillmentInput).then((result) => {
+    try {
+      const result = await fulfillPaidTransfer(fulfillmentInput);
       res.json({
         success: true,
         orderId: result.orderId,
         transferId: transfer.id,
         message: 'Payment successful. Check your email for your ticket and login details.',
       });
-    });
+    } catch (error) {
+      console.error('[checkout] Fulfillment failed after successful payment', {
+        transferId: transfer.id,
+        buyerEmail: fulfillmentInput.buyerEmail,
+        error,
+      });
+      res.json({
+        success: true,
+        pending: true,
+        transferId: transfer.id,
+        message: PAYMENT_RECEIVED_MESSAGE,
+      });
+    }
+    return;
   }
 
   if (transfer.state === 'PENDING') {
+    await recordPendingOrderAfterTransferSafe(fulfillmentInput);
     res.json({
       success: true,
       pending: true,
       transferId: transfer.id,
       message: 'Payment is processing. You will receive an email when it completes.',
     });
-    return Promise.resolve();
+    return;
   }
 
   res.status(400).json({
     error: 'Payment failed',
     transferState: transfer.state,
   });
-  return Promise.resolve();
+}
+
+async function recordPendingOrderAfterTransferSafe(input) {
+  try {
+    await recordPendingOrderAfterTransfer(input);
+  } catch (error) {
+    console.error('[checkout] Could not record pending order after transfer', {
+      finixTransferId: input.finixTransferId,
+      error,
+    });
+  }
+}
+
+async function tryRecoverPendingPayment(res, pendingOrder, buyerName, buyerPhone) {
+  try {
+    const result = await fulfillPaidTransfer(
+      toFulfillmentInput(pendingOrder, { buyerName, buyerPhone })
+    );
+    res.json({
+      success: true,
+      recovered: true,
+      orderId: result.orderId,
+      transferId: pendingOrder.finixTransferId,
+      message: 'Your previous payment was found. Check your email for your ticket and login details.',
+    });
+  } catch (error) {
+    console.error('[checkout] Could not recover pending payment', {
+      orderId: pendingOrder.id,
+      transferId: pendingOrder.finixTransferId,
+      error,
+    });
+    res.status(409).json({
+      error: 'Payment already received',
+      orderId: pendingOrder.id,
+      transferId: pendingOrder.finixTransferId,
+      message: PAYMENT_ALREADY_RECEIVED_MESSAGE,
+    });
+  }
 }
 
 function handleCheckoutError(res, error) {
@@ -158,6 +226,14 @@ function handleCheckoutError(res, error) {
     res.status(503).json({
       error: 'Database unavailable',
       message: 'Could not connect to the database. Restart the API server and try again.',
+    });
+    return;
+  }
+
+  if (error.code === 'P2028') {
+    res.status(503).json({
+      error: 'Order fulfillment temporarily unavailable',
+      message: PAYMENT_RECEIVED_MESSAGE,
     });
     return;
   }
@@ -272,6 +348,29 @@ router.post('/', checkoutLimiter, async (req, res) => {
 
     await assertEventCapacity(event.id, quantity);
 
+    const checkoutLock = await acquireCheckoutLock(event.id, email);
+
+    if (checkoutLock.finixTransferId) {
+      const existingTransfer = await getTransfer(checkoutLock.finixTransferId);
+      await respondToTransfer(res, existingTransfer, {
+        finixTransferId: existingTransfer.id,
+        buyerName: name,
+        buyerEmail: email,
+        buyerPhone: phone,
+        quantity,
+        amountCents,
+        eventId: event.id,
+      });
+      return;
+    }
+
+    const pendingOrder = await findRecoverablePendingOrder(event.id, email);
+    if (pendingOrder) {
+      await attachTransferToCheckoutLock(event.id, email, pendingOrder.finixTransferId);
+      await tryRecoverPendingPayment(res, pendingOrder, name, phone);
+      return;
+    }
+
     const identity = await createBuyerIdentity(name, email);
     const paymentInstrument = await createPaymentInstrumentForCheckout(identity.id, checkout, name);
     const transfer = await createTransfer(
@@ -285,8 +384,11 @@ router.post('/', checkoutLimiter, async (req, res) => {
         quantity: String(quantity),
         event_id: event.id,
         payment_method: checkout.paymentMethod,
-      }
+      },
+      checkoutLock.idempotencyKey
     );
+
+    await attachTransferToCheckoutLock(event.id, email, transfer.id);
 
     await respondToTransfer(res, transfer, {
       finixTransferId: transfer.id,
