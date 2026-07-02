@@ -17,6 +17,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 
+// Render (and similar hosts) terminate TLS and set X-Forwarded-For; required for rate limiting.
+app.set('trust proxy', 1);
+
 app.use(
   cors({
     origin: [env.FRONTEND_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
